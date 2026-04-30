@@ -97,7 +97,7 @@ export default function MyGallery() {
                 isEditing={editingId === asset.id}
                 onEdit={() => setEditingId(asset.id)}
                 onCancel={() => setEditingId(null)}
-                onSave={(data) => handleUpdate(asset.id, data)}
+                onSave={(data: any) => handleUpdate(asset.id, data)}
                 onDelete={() => handleDelete(asset.id)}
               />
             ))}
