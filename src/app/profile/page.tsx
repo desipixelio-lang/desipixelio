@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, collection, query, where, getDocs, increment } from 'firebase/firestore';
 import { useAuth } from '@/context/AuthContext';
-import { Camera, Loader2, Wallet, LogOut, ArrowLeft, Download, ShieldCheck, Zap } from 'lucide-react';
+import { Camera, Loader2, Wallet, ArrowLeft, Download, ShieldCheck, Zap, CreditCard, Crown, Mail, User as UserIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Script from 'next/script';
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
@@ -14,70 +15,99 @@ export default function ProfilePage() {
   
   const [userData, setUserData] = useState<any>(null);
   const [purchasedAssets, setPurchasedAssets] = useState<any[]>([]);
-  const [uploading, setUploading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [topupAmount, setTopupAmount] = useState<string>("100");
+  const [isTopUpLoading, setIsTopUpLoading] = useState(false);
 
   useEffect(() => {
     if (!user?.uid) return;
 
-    const unsub = onSnapshot(doc(db, "users", user.uid), (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
-        setUserData(data);
-        if (data.purchasedAssets?.length > 0) {
-          fetchDownloads(data.purchasedAssets);
-        } else {
-          setLoadingData(false);
-        }
-      } else {
-        setLoadingData(false);
+    // 1. Listen to User Profile
+    const unsub = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        setUserData(docSnap.data());
       }
+    });
+
+    // 2. Fetch Purchases
+    const q = query(collection(db, "purchases"), where("userId", "==", user.uid));
+    const unsubPurchases = onSnapshot(q, (snap) => {
+      const docs = snap.docs.map(d => ({ 
+        id: d.id, 
+        ...d.data() 
+      }));
+      setPurchasedAssets(docs);
+      setLoadingData(false);
     }, (err) => {
-      console.warn("Listener restricted:", err.message);
+      console.error("Purchase listener error:", err);
       setLoadingData(false);
     });
 
-    return () => unsub();
+    return () => { unsub(); unsubPurchases(); };
   }, [user]);
 
-  const fetchDownloads = async (ids: string[]) => {
+  const handleDownload = async (url: string, title: string) => {
+    if (userData?.downloadBalance <= 0) {
+      alert("Your download limit has been reached. Please upgrade your plan in the pricing section.");
+      router.push('/pricing');
+      return;
+    }
+
     try {
-      const q = query(collection(db, "assets"), where("id", "in", ids));
-      const snap = await getDocs(q);
-      setPurchasedAssets(snap.docs.map(d => d.data()));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingData(false);
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${title.replace(/\s+/g, '_')}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        downloadBalance: increment(-1)
+      });
+    } catch (error) {
+      console.error("Download failed:", error);
+      window.open(url, '_blank');
     }
   };
 
-  const handleLogout = async () => {
-    await logout();
-    router.push('/');
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", "ml_default");
-
+  const handleTopUp = async () => {
+    const amount = parseInt(topupAmount);
+    if (isNaN(amount) || amount < 1) return alert("Enter a valid amount");
+    setIsTopUpLoading(true);
     try {
-      const res = await fetch(`https://api.cloudinary.com/v1_1/dqgstsvzk/image/upload`, {
+      const res = await fetch("/api/razorpay", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
       });
-      const data = await res.json();
-      await updateDoc(doc(db, "users", user.uid), { profileImage: data.secure_url });
+      const order = await res.json();
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: order.amount,
+        currency: order.currency,
+        name: "DesiPixelio",
+        description: "Add funds to wallet",
+        order_id: order.id,
+        handler: async function (response: any) {
+          await updateDoc(doc(db, "users", user.uid), {
+            walletBalance: increment(amount)
+          });
+          alert(`₹${amount} added!`);
+        },
+        prefill: { email: user?.email || "" },
+        theme: { color: "#fbbf24" },
+      };
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
     } catch (err) {
-      alert("Upload failed");
+      console.error("Payment failed", err);
     } finally {
-      setUploading(false);
+      setIsTopUpLoading(false);
     }
   };
 
@@ -89,79 +119,108 @@ export default function ProfilePage() {
     );
   }
 
-  const nameToDisplay = userData?.name || user?.displayName || "Member";
-
   return (
-    <div className="min-h-screen bg-[#050505] text-white selection:bg-amber-500/30">
-      <nav className="max-w-7xl mx-auto p-6 md:p-10 flex justify-between items-center">
-        <Link href="/" className="group flex items-center gap-3 text-zinc-500 hover:text-white transition">
-          <div className="p-2 rounded-full bg-zinc-900 group-hover:bg-amber-500 group-hover:text-black transition">
-            <ArrowLeft size={18}/>
-          </div>
-          <span className="text-[10px] font-black uppercase tracking-[0.3em]">Gallery</span>
-        </Link>
-        <button onClick={handleLogout} className="px-6 py-2 bg-red-500/10 border border-red-500/20 text-red-500 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all">
-          Sign Out
-        </button>
-      </nav>
-
-      <main className="max-w-5xl mx-auto px-6 pb-20">
-        <div className="flex flex-col items-center mb-16">
-          <div className="relative">
-            {/* FIXED SIZE CONTAINER: Prevents high-res image from taking over screen */}
-            <div className="w-40 h-40 md:w-44 md:h-44 rounded-full border border-amber-500/20 p-2 bg-zinc-900 shadow-2xl flex items-center justify-center">
-              <div className="w-full h-full rounded-full overflow-hidden bg-black">
-                <img 
-                  src={userData?.profileImage || `https://ui-avatars.com/api/?name=${nameToDisplay}&background=111&color=fbbf24`} 
-                  className="w-full h-full object-cover" 
-                  alt="Profile" 
-                />
-              </div>
+    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8">
+      <Script src="https://checkout.razorpay.com/v1/checkout.js" />
+      
+      <main className="max-w-5xl mx-auto pt-32 md:pt-40">
+        
+        {/* USER PROFILE HEADER (UID REMOVED) */}
+        <section className="mb-10 flex flex-col md:flex-row items-center gap-6 bg-white/[0.02] border border-white/5 p-8 rounded-[2.5rem]">
+            <div className="relative">
+                <div className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-blue-500/30 p-1">
+                    <img 
+                        src={userData?.profileImage || `https://ui-avatars.com/api/?name=${userData?.name || "User"}`} 
+                        className="w-full h-full rounded-full object-cover" 
+                        alt="Profile" 
+                    />
+                </div>
+                <div className="absolute bottom-1 right-1 bg-blue-500 p-2 rounded-full border-4 border-[#050505]">
+                    <ShieldCheck size={16} className="text-white" />
+                </div>
             </div>
-            <label className="absolute bottom-1 right-2 bg-amber-500 p-3.5 rounded-full cursor-pointer shadow-2xl hover:bg-white transition text-black">
-              {uploading ? <Loader2 size={16} className="animate-spin"/> : <Camera size={16}/>}
-              <input type="file" className="hidden" onChange={handleImageUpload} disabled={uploading}/>
-            </label>
-          </div>
+            <div className="text-center md:text-left flex-grow">
+                <h1 className="text-3xl md:text-4xl font-serif mb-2">{userData?.name || "Member Name"}</h1>
+                <div className="flex flex-col md:flex-row items-center gap-4 text-zinc-500 text-sm font-medium">
+                    <span className="flex items-center gap-2">
+                        <Mail size={14} className="text-blue-500" /> {userData?.email}
+                    </span>
+                    <span className="hidden md:block text-zinc-800">|</span>
+                    <span className="flex items-center gap-2">
+                        <Zap size={14} className="text-amber-500" /> Verified Member
+                    </span>
+                </div>
+            </div>
+            <button 
+                onClick={() => logout()} 
+                className="px-6 py-3 border border-red-500/20 text-red-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
+            >
+                Logout
+            </button>
+        </section>
 
-          <h1 className="text-4xl md:text-5xl font-serif mt-8 tracking-tight text-white">{nameToDisplay}</h1>
-          <div className="flex items-center gap-2 mt-3 text-zinc-500">
-             <ShieldCheck size={14} className="text-amber-500" />
-             <p className="text-[10px] font-black uppercase tracking-[0.2em]">{user?.email}</p>
-          </div>
+        {/* SUBSCRIPTION STATUS WIDGET */}
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
+            <div className="bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-white/10 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] flex items-center justify-between">
+                <div>
+                    <p className="text-zinc-400 text-[10px] font-black uppercase tracking-widest mb-1">Active Plan</p>
+                    <h3 className="text-xl md:text-2xl font-serif text-white">{userData?.currentPlan || "No Active Plan"}</h3>
+                </div>
+                <Crown className="text-amber-500 w-8 h-8 md:w-10 md:h-10" />
+            </div>
+            <div className="bg-zinc-900/50 border border-white/5 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] flex items-center justify-between">
+                <div>
+                    <p className="text-zinc-400 text-[10px] font-black uppercase tracking-widest mb-1">Download Credits</p>
+                    <h3 className="text-3xl md:text-4xl font-serif text-amber-500">{userData?.downloadBalance || 0} <span className="text-xs text-zinc-500">Left</span></h3>
+                </div>
+                <Zap className="text-blue-500 w-6 h-6 md:w-8 md:h-8" />
+            </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <section className="bg-zinc-900/50 border border-white/5 p-10 rounded-[2.5rem]">
-            <div className="flex items-center gap-2 text-amber-500 text-[10px] font-black uppercase tracking-widest mb-10">Wallet Balance</div>
-            <div className="text-7xl font-serif mb-10 text-white tracking-tighter">₹{userData?.walletBalance || 0}</div>
-            <div className="space-y-4">
-              <input type="number" value={topupAmount} onChange={(e) => setTopupAmount(e.target.value)} className="w-full bg-black/50 border border-white/5 py-4 pl-6 rounded-2xl outline-none focus:border-amber-500/50 transition font-bold" />
-              <button className="w-full bg-amber-500 text-black py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Deposit Funds</button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+          {/* WALLET SECTION */}
+          <section className="bg-zinc-900/50 border border-white/5 p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem]">
+            <p className="text-amber-500 text-[10px] font-black uppercase mb-4 tracking-widest">Wallet Balance</p>
+            <h2 className="text-5xl md:text-6xl font-serif mb-8">₹{userData?.walletBalance || 0}</h2>
+            <div className="flex flex-col sm:flex-row gap-3">
+               <input 
+                type="number" 
+                value={topupAmount} 
+                onChange={(e) => setTopupAmount(e.target.value)} 
+                className="bg-black border border-white/10 p-4 rounded-xl w-full focus:outline-none focus:border-amber-500 transition text-sm"
+               />
+               <button onClick={handleTopUp} disabled={isTopUpLoading} className="bg-amber-500 text-black px-8 py-4 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-white transition-all active:scale-95">
+                 {isTopUpLoading ? <Loader2 className="animate-spin mx-auto"/> : "Topup"}
+               </button>
             </div>
           </section>
 
-          <section className="bg-zinc-900/50 border border-white/5 p-10 rounded-[2.5rem] flex flex-col">
-            <div className="flex items-center gap-2 text-zinc-400 text-[10px] font-black uppercase tracking-widest mb-10">My Library</div>
+          {/* LIBRARY SECTION */}
+          <section className="bg-zinc-900/50 border border-white/5 p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem]">
+            <p className="text-zinc-500 text-[10px] font-black uppercase mb-6 tracking-widest">My Library</p>
             {purchasedAssets.length > 0 ? (
-              <div className="flex-1 space-y-4 overflow-y-auto max-h-80 pr-2 custom-scrollbar">
+              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                 {purchasedAssets.map((asset) => (
-                  <div key={asset.id} className="flex items-center gap-4 p-4 bg-black/40 rounded-2xl border border-white/5 group">
-                    <img src={asset.preview_url} className="w-14 h-14 rounded-xl object-cover grayscale group-hover:grayscale-0 transition duration-500" />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-bold truncate max-w-[150px]">{asset.title}</h4>
-                      <p className="text-[9px] text-zinc-500 uppercase tracking-widest">ID: {asset.id.slice(-6)}</p>
+                  <div key={asset.id} className="flex items-center gap-3 md:gap-4 p-3 md:p-4 bg-black/40 rounded-2xl border border-white/5 hover:border-white/20 transition-all">
+                    <img src={asset.url} className="w-12 h-12 md:w-16 md:h-16 rounded-lg object-cover flex-shrink-0" alt="" />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-xs md:text-sm truncate pr-2">{asset.title}</h4>
+                      <p className="text-[9px] text-zinc-500 uppercase tracking-widest">HD Asset</p>
                     </div>
-                    <a href={asset.original_url} target="_blank" className="p-3 bg-zinc-800 rounded-full hover:bg-amber-500 hover:text-black transition">
-                      <Download size={16}/>
-                    </a>
+                    <button 
+                      onClick={() => handleDownload(asset.url, asset.title)}
+                      className="p-3 bg-zinc-800 rounded-xl hover:bg-amber-500 hover:text-black transition-all flex-shrink-0 active:scale-90"
+                      title="Download Original"
+                    >
+                      <Download size={16} className="md:w-[18px] md:h-[18px]"/>
+                    </button>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-10 border border-dashed border-white/5 rounded-[2rem]">
-                 <Zap size={32} className="text-zinc-800 mb-4" />
-                 <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Library empty</p>
+              <div className="text-center py-10 opacity-50">
+                <Zap size={32} className="mx-auto text-zinc-800 mb-4" />
+                <p className="text-zinc-600 text-[10px] font-black uppercase tracking-widest">Library empty</p>
               </div>
             )}
           </section>

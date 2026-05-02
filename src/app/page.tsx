@@ -63,17 +63,19 @@ export default function DesiPixelioHome() {
     }
     try {
       const cartId = `${user.uid}_${img.id}`;
+      // UPDATED LOGIC: Included original_url to ensure high-res downloads work after purchase
       await setDoc(doc(db, "cart", cartId), {
         userId: user.uid,
         assetId: img.id,
         title: img.title,
         price: img.price,
         preview_url: img.preview_url,
+        original_url: img.original_url || img.preview_url, // Added this field
         addedAt: serverTimestamp()
       });
       if (redirect) router.push('/cart');
     } catch (e) {
-      console.error(e);
+      console.error("Add to Cart Error:", e);
     }
   };
 
@@ -132,30 +134,30 @@ export default function DesiPixelioHome() {
 
         {/* --- SERVICES CARDS --- */}
         <section className="max-w-7xl mx-auto pt-32 pb-12">
-           <div className="text-center mb-16">
-              <h2 className="text-4xl font-serif text-[#0F172A]">Our Specialized Services</h2>
-              <div className="h-1 w-20 bg-blue-600 mx-auto mt-4 rounded-full" />
-           </div>
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 px-4">
-              <Link href="/services/stocks" className="group bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-500">
-                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mb-8 group-hover:bg-blue-600 group-hover:text-white transition-all duration-500"><ImageIcon size={32} /></div>
-                <h3 className="text-2xl font-serif text-[#0F172A] mb-4">Stock Media Hub</h3>
-                <p className="text-sm text-slate-500 leading-relaxed mb-8">Access real stock images from 40+ global platforms at competitive prices.</p>
-                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600">Acquire Assets <ArrowRight size={14} className="group-hover:translate-x-2 transition-transform" /></div>
-              </Link>
-              <Link href="/services/development" className="group bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-500">
-                <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-3xl flex items-center justify-center mb-8 group-hover:bg-amber-600 group-hover:text-white transition-all duration-500"><Globe size={32} /></div>
-                <h3 className="text-2xl font-serif text-[#0F172A] mb-4">Digital Development</h3>
-                <p className="text-sm text-slate-500 leading-relaxed mb-8">Specializing in Next.js web applications and custom software systems.</p>
-                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-amber-600">Consultation <ArrowRight size={14} className="group-hover:translate-x-2 transition-transform" /></div>
-              </Link>
-              <Link href="/services/printing" className="group bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-500">
-                <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mb-8 group-hover:bg-emerald-600 group-hover:text-white transition-all duration-500"><Printer size={32} /></div>
-                <h3 className="text-2xl font-serif text-[#0F172A] mb-4">Print Operations</h3>
-                <p className="text-sm text-slate-500 leading-relaxed mb-8">High-quality commercial printing for examination papers and marksheets.</p>
-                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-500">Order Printing <ArrowRight size={14} className="group-hover:translate-x-2 transition-transform" /></div>
-              </Link>
-           </div>
+            <div className="text-center mb-16">
+               <h2 className="text-4xl font-serif text-[#0F172A]">Our Specialized Services</h2>
+               <div className="h-1 w-20 bg-blue-600 mx-auto mt-4 rounded-full" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 px-4">
+               <Link href="/services/stocks" className="group bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-500">
+                 <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mb-8 group-hover:bg-blue-600 group-hover:text-white transition-all duration-500"><ImageIcon size={32} /></div>
+                 <h3 className="text-2xl font-serif text-[#0F172A] mb-4">Stock Media Hub</h3>
+                 <p className="text-sm text-slate-500 leading-relaxed mb-8">Access real stock images from 40+ global platforms at competitive prices.</p>
+                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600">Acquire Assets <ArrowRight size={14} className="group-hover:translate-x-2 transition-transform" /></div>
+               </Link>
+               <Link href="/services/development" className="group bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-500">
+                 <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-3xl flex items-center justify-center mb-8 group-hover:bg-amber-600 group-hover:text-white transition-all duration-500"><Globe size={32} /></div>
+                 <h3 className="text-2xl font-serif text-[#0F172A] mb-4">Digital Development</h3>
+                 <p className="text-sm text-slate-500 leading-relaxed mb-8">Specializing in Next.js web applications and custom software systems.</p>
+                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-amber-600">Consultation <ArrowRight size={14} className="group-hover:translate-x-2 transition-transform" /></div>
+               </Link>
+               <Link href="/services/printing" className="group bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-500">
+                 <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mb-8 group-hover:bg-emerald-600 group-hover:text-white transition-all duration-500"><Printer size={32} /></div>
+                 <h3 className="text-2xl font-serif text-[#0F172A] mb-4">Print Operations</h3>
+                 <p className="text-sm text-slate-500 leading-relaxed mb-8">High-quality commercial printing for examination papers and marksheets.</p>
+                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-500">Order Printing <ArrowRight size={14} className="group-hover:translate-x-2 transition-transform" /></div>
+               </Link>
+            </div>
         </section>
       </div>
 

@@ -70,37 +70,49 @@ export default function CollectionBuilderModal({ isOpen, onClose, mode, selected
       }
 
       const colRef = doc(db, "collections", targetSlug);
+      
       const collectionMeta: any = {
         title,
         description: desc,
         location: loc,
         updatedAt: serverTimestamp(),
       };
+
       if (coverUrl) collectionMeta.coverImage = coverUrl;
 
       if (mode === 'create') {
+        collectionMeta.createdAt = serverTimestamp(); 
         selectedIds.forEach((id: string) => {
           batch.update(doc(db, "assets", id), { collectionId: targetSlug });
         });
         collectionMeta.assetCount = increment(selectedIds.length);
-      } else if (bulkFiles) {
+      } 
+      else if (bulkFiles) {
+        collectionMeta.createdAt = serverTimestamp();
+        
         for (let i = 0; i < bulkFiles.length; i++) {
           const secureUrl = await uploadToCloudinary(bulkFiles[i]);
           if (!secureUrl) continue;
+
+          // --- FIX APPLIED HERE ---
+          const logoId = "pixel_logo_png_vapjid";
+          const transformation = `l_${logoId},w_200,o_25,a_30,fl_tiled/q_auto:low`;
+          const watermarkedPreviewUrl = secureUrl.replace("/upload/", `/upload/${transformation}/`);
+          // ------------------------
+
           const assetId = `${targetSlug}_${Date.now()}_${i}`;
           batch.set(doc(db, "assets", assetId), {
             id: assetId,
             collectionId: targetSlug,
             title: `${title} Asset ${i + 1}`,
             original_url: secureUrl,
-            preview_url: secureUrl.replace('/upload/', '/upload/q_auto,f_auto,w_800/'),
+            preview_url: watermarkedPreviewUrl, // Now matches AdminUpload logic
             price: 19,
             tags: ["desi", "pixelio", targetSlug],
             createdAt: serverTimestamp()
           });
         }
         collectionMeta.assetCount = increment(bulkFiles.length);
-        collectionMeta.createdAt = serverTimestamp();
       }
 
       batch.set(colRef, collectionMeta, { merge: true });

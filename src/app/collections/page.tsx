@@ -117,34 +117,7 @@ const Twitter = ({ size = 18 }) => (
         </div>
       </div>
 
-     {/* --- FOOTER --- */}
-      <footer style={{ backgroundColor: PALETTE.midnight }} className="pt-32 pb-16 px-6 md:px-12 border-t border-white/5">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-16 mb-20 text-center md:text-left">
-          <div className="md:col-span-2">
-            <img src="https://res.cloudinary.com/dcdd8uuyl/image/upload/v1777393585/pixel_logo_png_i1scne.png" className="h-20 w-auto mb-8 mx-auto md:mx-0" alt="Logo" />
-            <p style={{ color: PALETTE.coolGray }} className="text-xs leading-relaxed max-w-sm mx-auto md:mx-0">The ultimate visual index for authentic Indian media. Search through hundreds of curated cultural categories.</p>
-          </div>
-          <div>
-            <h5 className="text-[11px] font-black uppercase tracking-widest mb-8 text-white">Resources</h5>
-            <ul style={{ color: PALETTE.coolGray }} className="space-y-4 text-[10px] font-bold uppercase tracking-widest">
-              <li><Link href="/collections" className="hover:text-blue-500">Collections</Link></li>
-              <li><Link href="/pricing" className="hover:text-blue-500">Pricing</Link></li>
-              <li><Link href="/help" className="hover:text-blue-500">Help Center</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h5 className="text-[11px] font-black uppercase tracking-widest mb-8 text-white">Company</h5>
-            <ul style={{ color: PALETTE.coolGray }} className="space-y-4 text-[10px] font-bold uppercase tracking-widest">
-              <li><Link href="/about" className="hover:text-blue-500">About Us</Link></li>
-              <li><Link href="/licensing" className="hover:text-blue-500">Licensing</Link></li>
-              <li><Link href="/contact" className="hover:text-blue-500">Contact</Link></li>
-            </ul>
-          </div>
-        </div>
-        <div className="pt-12 border-t border-white/5 text-center text-[9px] font-black uppercase tracking-[0.4em] text-slate-700 italic">
-          © 2026 DesiPixelio  • Crafted with ❤️ in Jaipur
-        </div>
-      </footer>
+  
     </div>
   );
 }
