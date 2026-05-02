@@ -48,55 +48,70 @@ export default function CartPage() {
   const walletBalance = userData?.walletBalance || 0;
   const downloadBalance = userData?.downloadBalance || 0;
   
-  // Filter out items already owned to calculate the actual cost/credit requirement
+  // Filter out items already owned
   const newItemsOnly = cartItems.filter(item => !userData?.purchasedAssets?.includes(item.assetId || item.id));
   
-  const hasEnoughCredits = downloadBalance >= newItemsOnly.length;
+  // Logic: Use credits if available for ALL items, otherwise use wallet balance
+  const hasEnoughCredits = downloadBalance >= newItemsOnly.length && newItemsOnly.length > 0;
   const totalCost = hasEnoughCredits ? 0 : newItemsOnly.reduce((acc, item) => acc + (item.price || 0), 0);
 
   const handlePurchase = async () => {
-    if (walletBalance < totalCost) {
-      alert("Insufficient Wallet Balance.");
-      return;
+    if (newItemsOnly.length === 0 && cartItems.length > 0) {
+        // Handle case where user is just clearing already owned items from cart
+        setPurchasing(true);
+        try {
+            for (const item of cartItems) {
+                await deleteDoc(doc(db, "cart", item.cartId));
+            }
+            router.push('/profile');
+            return;
+        } catch (e) { console.error(e); } 
+        finally { setPurchasing(false); return; }
     }
-    
-    if (downloadBalance < newItemsOnly.length) {
-        alert(`Required: ${newItemsOnly.length} credits. Available: ${downloadBalance}.`);
-        router.push('/pricing');
-        return;
+
+    // Check affordability
+    if (!hasEnoughCredits && walletBalance < totalCost) {
+      alert("Insufficient Balance. Please add credits or top up your wallet.");
+      router.push('/pricing');
+      return;
     }
 
     setPurchasing(true);
     try {
       const userRef = doc(db, "users", user.uid);
       
-      // Deduct only for items NOT already owned
-      await updateDoc(userRef, {
-        walletBalance: increment(-totalCost),
-        downloadBalance: increment(-newItemsOnly.length)
-      });
+      // DEDUCTION LOGIC:
+      // If we have credits, deduct credits. If not, deduct from wallet.
+      if (hasEnoughCredits) {
+        await updateDoc(userRef, {
+          downloadBalance: increment(-newItemsOnly.length)
+        });
+      } else {
+        await updateDoc(userRef, {
+          walletBalance: increment(-totalCost)
+        });
+      }
 
+      // Process items
       for (const item of cartItems) {
         const finalAssetId = item.assetId || item.id;
 
-        // If owned, just remove from cart and skip processing
-        if (userData?.purchasedAssets?.includes(finalAssetId)) {
-          await deleteDoc(doc(db, "cart", item.cartId));
-          continue; 
+        // If not already owned, record the purchase
+        if (!userData?.purchasedAssets?.includes(finalAssetId)) {
+            await addDoc(collection(db, "purchases"), {
+                userId: user.uid,
+                assetId: finalAssetId,
+                title: item.title || "Untitled Asset",
+                url: item.original_url || item.preview_url || "", 
+                purchasedAt: new Date()
+            });
+
+            await updateDoc(userRef, {
+                purchasedAssets: arrayUnion(finalAssetId)
+            });
         }
 
-        await addDoc(collection(db, "purchases"), {
-          userId: user.uid,
-          assetId: finalAssetId,
-          title: item.title || "Untitled Asset",
-          url: item.original_url || item.preview_url || "", 
-          purchasedAt: new Date()
-        });
-
-        await updateDoc(userRef, {
-          purchasedAssets: arrayUnion(finalAssetId)
-        });
-
+        // Always remove from cart after processing
         await deleteDoc(doc(db, "cart", item.cartId));
       }
 
@@ -142,7 +157,7 @@ export default function CartPage() {
                       ) : (
                         <div className="flex items-center gap-3 mt-1">
                             <p className={`text-sm font-black ${hasEnoughCredits ? 'text-slate-400 line-through' : 'text-blue-600'}`}>₹{item.price}</p>
-                            {hasEnoughCredits && <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">Included in Plan</span>}
+                            {hasEnoughCredits && <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest">Using Credit</span>}
                         </div>
                       )}
                     </div>
@@ -171,21 +186,23 @@ export default function CartPage() {
             </div>
             <div className="flex justify-between items-center text-sm">
                 <span className="text-slate-400">Credits Required</span>
-                <span className="text-blue-400">-{newItemsOnly.length}</span>
+                <span className="text-blue-400">{newItemsOnly.length}</span>
             </div>
             <div className="flex justify-between items-center text-xl font-bold pt-4">
-                <span>Final Charge</span>
-                <span className={hasEnoughCredits ? "text-emerald-400" : ""}>₹{totalCost}</span>
+                <span>Total Cost</span>
+                <span className={hasEnoughCredits ? "text-emerald-400" : ""}>
+                    {hasEnoughCredits ? "0 Credits" : `₹${totalCost}`}
+                </span>
             </div>
           </div>
 
           <div className="space-y-4 mb-10">
             <div className="flex justify-between items-center text-[10px] uppercase tracking-widest">
-                <span className="text-slate-500">Wallet</span>
+                <span className="text-slate-500">Your Wallet</span>
                 <span>₹{walletBalance}</span>
             </div>
             <div className="flex justify-between items-center text-[10px] uppercase tracking-widest">
-                <span className="text-slate-500">Credits</span>
+                <span className="text-slate-500">Your Credits</span>
                 <span className="text-blue-400">{downloadBalance}</span>
             </div>
           </div>
@@ -201,20 +218,24 @@ export default function CartPage() {
               <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-start gap-3">
                 <CheckCircle2 className="text-emerald-500 shrink-0" size={16} />
                 <p className="text-[9px] leading-relaxed text-emerald-200 uppercase font-bold tracking-wider">
-                    Plan Active: Credits will be used instead of wallet balance.
+                    Using available credits for this purchase.
                 </p>
               </div>
           ) : (
             <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-start gap-3">
                 <AlertCircle className="text-amber-500 shrink-0" size={16} />
                 <p className="text-[9px] leading-relaxed text-amber-200 uppercase font-bold tracking-wider">
-                    Credits low. Your wallet balance will be used for remaining items.
+                    {downloadBalance === 0 ? "No credits available. Wallet will be used." : "Not enough credits for all items. Wallet will be used."}
                 </p>
             </div>
           )}
 
           <button 
-            disabled={cartItems.length === 0 || (totalCost > walletBalance && !hasEnoughCredits) || purchasing}
+            disabled={
+                cartItems.length === 0 || 
+                purchasing || 
+                (!hasEnoughCredits && walletBalance < totalCost)
+            }
             onClick={handlePurchase}
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-lg active:scale-95"
           >

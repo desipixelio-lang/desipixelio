@@ -2,19 +2,27 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot, updateDoc, collection, query, where, getDocs, increment } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, collection, query, where, increment } from 'firebase/firestore';
 import { useAuth } from '@/context/AuthContext';
-import { Camera, Loader2, Wallet, ArrowLeft, Download, ShieldCheck, Zap, CreditCard, Crown, Mail, User as UserIcon } from 'lucide-react';
-import Link from 'next/link';
+import { Loader2, Download, ShieldCheck, Zap, Crown, Mail, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script';
+
+// Define the structure to fix red underlines (TypeScript)
+interface PurchasedAsset {
+  id: string;
+  assetId: string;
+  url: string; // This should be the original/high-res URL from your DB
+  title: string;
+  userId: string;
+}
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
   const router = useRouter();
   
   const [userData, setUserData] = useState<any>(null);
-  const [purchasedAssets, setPurchasedAssets] = useState<any[]>([]);
+  const [purchasedAssets, setPurchasedAssets] = useState<PurchasedAsset[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [topupAmount, setTopupAmount] = useState<string>("100");
   const [isTopUpLoading, setIsTopUpLoading] = useState(false);
@@ -29,13 +37,13 @@ export default function ProfilePage() {
       }
     });
 
-    // 2. Fetch Purchases
+    // 2. Fetch Purchases from Firebase
     const q = query(collection(db, "purchases"), where("userId", "==", user.uid));
     const unsubPurchases = onSnapshot(q, (snap) => {
       const docs = snap.docs.map(d => ({ 
         id: d.id, 
         ...d.data() 
-      }));
+      } as PurchasedAsset));
       setPurchasedAssets(docs);
       setLoadingData(false);
     }, (err) => {
@@ -46,38 +54,59 @@ export default function ProfilePage() {
     return () => { unsub(); unsubPurchases(); };
   }, [user]);
 
-  const handleDownload = async (url: string, title: string) => {
-    if (userData?.downloadBalance <= 0) {
-      alert("Your download limit has been reached. Please upgrade your plan in the pricing section.");
-      router.push('/pricing');
-      return;
-    }
+  // UNIQUE LIBRARY LOGIC: Removes duplicate visual entries
+  const uniqueLibrary = Array.from(
+    purchasedAssets
+      .filter((asset: PurchasedAsset) => userData?.purchasedAssets?.includes(asset.assetId))
+      .reduce((map, asset: PurchasedAsset) => {
+        if (!map.has(asset.assetId)) {
+          map.set(asset.assetId, asset);
+        }
+        return map;
+      }, new Map<string, PurchasedAsset>())
+      .values()
+  );
 
+  /**
+   * handleDownload
+   * Triggers a browser download using the High-Quality URL from Firebase.
+   */
+  const handleDownload = async (url: string, title: string) => {
     try {
+      // Fetch the actual file data (original quality)
       const response = await fetch(url);
+      if (!response.ok) throw new Error("Network response was not ok");
+      
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
+      
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = `${title.replace(/\s+/g, '_')}.png`;
+      
+      // Forces the filename for the high-res download
+      link.download = `${title.replace(/\s+/g, '_')}_Original.png`;
+      
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      
+      // Clean up the memory
       window.URL.revokeObjectURL(blobUrl);
-
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        downloadBalance: increment(-1)
-      });
     } catch (error) {
-      console.error("Download failed:", error);
+      console.error("Download failed, falling back to window.open:", error);
+      // Fallback if fetch is blocked by CORS
       window.open(url, '_blank');
     }
   };
 
   const handleTopUp = async () => {
     const amount = parseInt(topupAmount);
-    if (isNaN(amount) || amount < 1) return alert("Enter a valid amount");
+    
+    if (isNaN(amount) || amount < 50) {
+        alert("Minimum wallet top-up amount is ₹50");
+        return;
+    }
+
     setIsTopUpLoading(true);
     try {
       const res = await fetch("/api/razorpay", {
@@ -94,10 +123,10 @@ export default function ProfilePage() {
         description: "Add funds to wallet",
         order_id: order.id,
         handler: async function (response: any) {
-          await updateDoc(doc(db, "users", user.uid), {
+          await updateDoc(doc(db, "users", user!.uid), {
             walletBalance: increment(amount)
           });
-          alert(`₹${amount} added!`);
+          alert(`₹${amount} added successfully!`);
         },
         prefill: { email: user?.email || "" },
         theme: { color: "#fbbf24" },
@@ -125,7 +154,7 @@ export default function ProfilePage() {
       
       <main className="max-w-5xl mx-auto pt-32 md:pt-40">
         
-        {/* USER PROFILE HEADER (UID REMOVED) */}
+        {/* USER PROFILE HEADER */}
         <section className="mb-10 flex flex-col md:flex-row items-center gap-6 bg-white/[0.02] border border-white/5 p-8 rounded-[2.5rem]">
             <div className="relative">
                 <div className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-blue-500/30 p-1">
@@ -159,7 +188,7 @@ export default function ProfilePage() {
             </button>
         </section>
 
-        {/* SUBSCRIPTION STATUS WIDGET */}
+        {/* STATS WIDGETS */}
         <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
             <div className="bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-white/10 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] flex items-center justify-between">
                 <div>
@@ -182,37 +211,46 @@ export default function ProfilePage() {
           <section className="bg-zinc-900/50 border border-white/5 p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem]">
             <p className="text-amber-500 text-[10px] font-black uppercase mb-4 tracking-widest">Wallet Balance</p>
             <h2 className="text-5xl md:text-6xl font-serif mb-8">₹{userData?.walletBalance || 0}</h2>
-            <div className="flex flex-col sm:flex-row gap-3">
-               <input 
-                type="number" 
-                value={topupAmount} 
-                onChange={(e) => setTopupAmount(e.target.value)} 
-                className="bg-black border border-white/10 p-4 rounded-xl w-full focus:outline-none focus:border-amber-500 transition text-sm"
-               />
-               <button onClick={handleTopUp} disabled={isTopUpLoading} className="bg-amber-500 text-black px-8 py-4 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-white transition-all active:scale-95">
-                 {isTopUpLoading ? <Loader2 className="animate-spin mx-auto"/> : "Topup"}
-               </button>
+            <div className="flex flex-col gap-3">
+               <div className="flex flex-col sm:flex-row gap-3">
+                  <input 
+                    type="number" 
+                    value={topupAmount} 
+                    placeholder="Min ₹50"
+                    onChange={(e) => setTopupAmount(e.target.value)} 
+                    className="bg-black border border-white/10 p-4 rounded-xl w-full focus:outline-none focus:border-amber-500 transition text-sm"
+                  />
+                  <button onClick={handleTopUp} disabled={isTopUpLoading} className="bg-amber-500 text-black px-8 py-4 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-white transition-all active:scale-95">
+                    {isTopUpLoading ? <Loader2 className="animate-spin mx-auto"/> : "Topup"}
+                  </button>
+               </div>
+               <p className="flex items-center gap-2 text-[10px] text-zinc-500 uppercase font-bold tracking-widest">
+                  <AlertCircle size={12} /> Min top-up: ₹50
+               </p>
             </div>
           </section>
 
           {/* LIBRARY SECTION */}
           <section className="bg-zinc-900/50 border border-white/5 p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem]">
-            <p className="text-zinc-500 text-[10px] font-black uppercase mb-6 tracking-widest">My Library</p>
-            {purchasedAssets.length > 0 ? (
+            <p className="text-zinc-500 text-[10px] font-black uppercase mb-6 tracking-widest">My Library ({uniqueLibrary.length})</p>
+            {uniqueLibrary.length > 0 ? (
               <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                {purchasedAssets.map((asset) => (
+                {uniqueLibrary.map((asset) => (
                   <div key={asset.id} className="flex items-center gap-3 md:gap-4 p-3 md:p-4 bg-black/40 rounded-2xl border border-white/5 hover:border-white/20 transition-all">
+                    {/* Visual Preview */}
                     <img src={asset.url} className="w-12 h-12 md:w-16 md:h-16 rounded-lg object-cover flex-shrink-0" alt="" />
+                    
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-xs md:text-sm truncate pr-2">{asset.title}</h4>
-                      <p className="text-[9px] text-zinc-500 uppercase tracking-widest">HD Asset</p>
+                      <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-bold">Original Quality Available</p>
                     </div>
+                    
                     <button 
                       onClick={() => handleDownload(asset.url, asset.title)}
                       className="p-3 bg-zinc-800 rounded-xl hover:bg-amber-500 hover:text-black transition-all flex-shrink-0 active:scale-90"
-                      title="Download Original"
+                      title="Download Original Quality"
                     >
-                      <Download size={16} className="md:w-[18px] md:h-[18px]"/>
+                      <Download size={16} />
                     </button>
                   </div>
                 ))}
