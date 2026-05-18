@@ -8,7 +8,7 @@ export default function StockMediaPage() {
   
   // Configuration for your contact points
   const CONTACT_INFO = {
-    whatsapp: "919000000000", // Replace with your actual WhatsApp number
+    whatsapp: "919588847410", // Replace with your actual WhatsApp number
     telegram: "your_username", // Replace with your Telegram username
   };
 

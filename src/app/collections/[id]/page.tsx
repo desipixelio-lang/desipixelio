@@ -10,7 +10,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { 
   ArrowLeft, Loader2, MapPin, 
-  CheckCircle2, ShoppingBag, MousePointer2, ListChecks, Info
+  CheckCircle2, ShoppingBag, ListChecks, Info, Eye, X
 } from 'lucide-react';
 
 export default function CollectionDetail() {
@@ -24,6 +24,7 @@ export default function CollectionDetail() {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isAdding, setIsAdding] = useState(false);
+  const [selectedPreview, setSelectedPreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -54,12 +55,10 @@ export default function CollectionDetail() {
     fetchData();
   }, [id]);
 
-  // Filter out items already owned for the pricing logic
   const selectedItems = useMemo(() => 
     images.filter(img => selectedIds.includes(img.id)), 
   [selectedIds, images]);
 
-  // NEW: Only count price for images NOT already owned
   const newItemsToBuy = useMemo(() => 
     selectedItems.filter(item => !userData?.purchasedAssets?.includes(item.id)),
   [selectedItems, userData]);
@@ -87,7 +86,6 @@ export default function CollectionDetail() {
     setIsAdding(true);
     try {
       for (const item of selectedItems) {
-        // Skip adding to cart if already owned
         if (userData?.purchasedAssets?.includes(item.id)) continue;
 
         const cartId = `${user.uid}_${item.id}`;
@@ -148,13 +146,25 @@ export default function CollectionDetail() {
                 return (
                   <div 
                     key={img.id} 
-                    onClick={() => toggleSelect(img.id)} 
-                    className={`relative rounded-2xl md:rounded-[2rem] overflow-hidden cursor-pointer transition-all duration-500 break-inside-avoid border-4 ${isSelected ? 'border-blue-500 scale-[1.02]' : 'border-transparent bg-white shadow-sm'} ${isOwned ? 'opacity-70 grayscale-[0.5]' : ''}`}
+                    className={`group relative rounded-2xl md:rounded-[2rem] overflow-hidden cursor-pointer transition-all duration-500 break-inside-avoid border-4 ${isSelected ? 'border-blue-500 scale-[1.02]' : 'border-transparent bg-white shadow-sm'} ${isOwned ? 'opacity-70 grayscale-[0.5]' : ''}`}
                   >
-                    <img src={img.preview_url} className="w-full h-auto" alt="" />
+                    <div onClick={() => toggleSelect(img.id)}>
+                      <img src={img.preview_url} className="w-full h-auto" alt="" />
+                    </div>
                     
+                    {/* Preview Button */}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPreview(img.preview_url);
+                      }}
+                      className="absolute top-2 left-2 md:top-4 md:left-4 z-10 bg-black/50 hover:bg-black/70 backdrop-blur-md p-2 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Eye size={16} />
+                    </button>
+
                     {isOwned && (
-                      <div className="absolute top-2 left-2 md:top-4 md:left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-2 shadow-md">
+                      <div className="absolute top-2 left-12 md:top-4 md:left-14 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-2 shadow-md">
                         <CheckCircle2 size={12} className="text-emerald-500" />
                         <span className="text-[8px] font-black text-slate-900 uppercase">Owned</span>
                       </div>
@@ -164,7 +174,7 @@ export default function CollectionDetail() {
                         {isSelected && <div className="bg-blue-500 text-white p-1 md:p-2 rounded-full shadow-lg"><CheckCircle2 size={16} /></div>}
                     </div>
 
-                    <div className="p-4 md:p-6 text-slate-900 bg-white">
+                    <div className="p-4 md:p-6 text-slate-900 bg-white" onClick={() => toggleSelect(img.id)}>
                       <div className="flex justify-between items-center gap-2">
                         <span className="text-[9px] font-black uppercase truncate">{img.title}</span>
                         <span className={`font-black text-xs ${isOwned ? 'text-slate-400 line-through' : 'text-blue-600'}`}>₹{img.price}</span>
@@ -177,6 +187,23 @@ export default function CollectionDetail() {
           )}
         </div>
       </main>
+
+      {/* FULL IMAGE PREVIEW MODAL */}
+      {selectedPreview && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-4 md:p-10 animate-in fade-in duration-300"
+          onClick={() => setSelectedPreview(null)}
+        >
+          <button className="absolute top-6 right-6 text-white/50 hover:text-white transition">
+            <X size={32} />
+          </button>
+          <img 
+            src={selectedPreview} 
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" 
+            alt="Preview" 
+          />
+        </div>
+      )}
 
       {/* RESPONSIVE FLOATING ACTION BAR */}
       {selectedIds.length > 0 && (
